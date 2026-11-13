@@ -1,260 +1,288 @@
 
 package com.darkbooster.app;
 
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.os.Bundle;
+import android.app.Service;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Intent;
 import android.graphics.Color;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.RectF;
+import android.graphics.Typeface;
+import android.graphics.PixelFormat;
+import android.os.Build;
+import android.os.IBinder;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public class MainActivity extends Activity {
+public class OverlayService extends Service {
 
-    LinearLayout main;
-    String selectedMode = "STANDARD";
-    int red = Color.rgb(255, 35, 55);
-    int dark = Color.rgb(10, 12, 18);
-    int cardColor = Color.rgb(28, 30, 40);
+    WindowManager wm;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        showDashboard();
-    }
+    LinearLayout leftPanel;
+    LinearLayout rightPanel;
+
+    TextView floatingButton;
+
+    boolean panelOpen = false;
+
+    final int red = Color.rgb(255, 35, 55);
+    final int dark = Color.rgb(10, 12, 18);
+    final int card = Color.rgb(35, 37, 48);
+
+    final String CHANNEL_ID = "dark_booster_channel";
+    final int NOTIFICATION_ID = 101;
 
     int dp(int value) {
-        return (int)(value * getResources()
+        return (int) (value * getResources()
                 .getDisplayMetrics().density);
     }
 
-    TextView text(String value, int size, int color) {
+    @Override
+    public void onCreate() {
+        super.onCreate();
+
+        if (Build.VERSION.SDK_INT >= 23 &&
+                !android.provider.Settings.canDrawOverlays(this)) {
+            stopSelf();
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= 26) {
+            createNotificationChannel();
+            startForeground(NOTIFICATION_ID,
+                    makeNotification());
+        }
+
+        wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+
+        createPanels();
+        createFloatingButton();
+    }
+
+    void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel channel =
+                new NotificationChannel(
+                    CHANNEL_ID,
+                    "DARK BOOSTER",
+                    NotificationManager.IMPORTANCE_LOW
+                );
+
+            NotificationManager manager =
+                getSystemService(NotificationManager.class);
+
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+    Notification makeNotification() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            return new Notification.Builder(this, CHANNEL_ID)
+                .setContentTitle("DARK BOOSTER")
+                .setContentText("Gaming panel is running")
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .build();
+        }
+
+        return new Notification.Builder(this)
+            .setContentTitle("DARK BOOSTER")
+            .setContentText("Gaming panel is running")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .build();
+    }
+
+    int overlayType() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            return WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+        }
+
+        return WindowManager.LayoutParams.TYPE_PHONE;
+    }
+
+    WindowManager.LayoutParams params(
+            int width, int height, int gravity) {
+
+        WindowManager.LayoutParams p =
+            new WindowManager.LayoutParams(
+                width,
+                height,
+                overlayType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT
+            );
+
+        p.gravity = gravity;
+        return p;
+    }
+
+    TextView makeTitle(String value) {
         TextView t = new TextView(this);
+
         t.setText(value);
-        t.setTextSize(size);
-        t.setTextColor(color);
-        t.setPadding(dp(8), dp(8), dp(8), dp(8));
+        t.setTextColor(red);
+        t.setTextSize(16);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(4), dp(14), dp(4), dp(14));
+
         return t;
     }
 
-    Button makeButton(String value) {
+    void addPanelButton(LinearLayout panel, String name) {
         Button b = new Button(this);
-        b.setText(value);
+
+        b.setText(name);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(15);
         b.setAllCaps(false);
-        b.setBackgroundColor(cardColor);
-        return b;
+        b.setTextSize(11);
+        b.setBackgroundColor(card);
+
+        LinearLayout.LayoutParams bp =
+            new LinearLayout.LayoutParams(-1, dp(48));
+
+        bp.setMargins(0, dp(3), 0, dp(3));
+        panel.addView(b, bp);
+
+        b.setOnClickListener(v ->
+            Toast.makeText(this,
+                name + " selected",
+                Toast.LENGTH_SHORT).show()
+        );
     }
 
-    void setupPage(String title) {
+    LinearLayout makePanel(String title) {
+        LinearLayout panel = new LinearLayout(this);
+
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(5), dp(8), dp(5), dp(8));
+        panel.setBackgroundColor(dark);
+
+        panel.addView(makeTitle(title));
+
         ScrollView scroll = new ScrollView(this);
-        main = new LinearLayout(this);
-        main.setOrientation(LinearLayout.VERTICAL);
-        main.setPadding(dp(16), dp(20), dp(16), dp(20));
-        main.setBackgroundColor(dark);
 
-        TextView heading = text(title, 25, red);
-        heading.setGravity(Gravity.CENTER);
-        main.addView(heading);
+        LinearLayout items = new LinearLayout(this);
+        items.setOrientation(LinearLayout.VERTICAL);
 
-        scroll.addView(main);
-        setContentView(scroll);
-    }
-
-    void addButton(String name, Runnable action) {
-        Button b = makeButton(name);
-        LinearLayout.LayoutParams p =
-            new LinearLayout.LayoutParams(-1, -2);
-        p.setMargins(0, dp(5), 0, dp(5));
-        main.addView(b, p);
-
-        b.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                action.run();
-            }
-        });
-    }
-
-    void showDashboard() {
-        setupPage("DARK BOOSTER");
-
-        TextView sub = text(
-            "ULTIMATE GAMING CONTROL",
-            13, Color.LTGRAY);
-        sub.setGravity(Gravity.CENTER);
-        main.addView(sub);
-
-        main.addView(text(
-            "SELECT GAMING MODE", 18, Color.WHITE));
-
-        addButton("STANDARD MODE", new Runnable() {
-            public void run() {
-                selectMode("STANDARD");
-            }
-        });
-
-        addButton("BASIC MODE", new Runnable() {
-            public void run() {
-                selectMode("BASIC");
-            }
-        });
-
-        addButton("ULTRA MODE", new Runnable() {
-            public void run() {
-                selectMode("ULTRA");
-            }
-        });
-
-        TextView current = text(
-            "CURRENT MODE: " + selectedMode,
-            17, red);
-        current.setGravity(Gravity.CENTER);
-        main.addView(current);
-
-        main.addView(text(
-            "PERFORMANCE MONITORS", 18, Color.WHITE));
-
-        String[] monitors = {
+        String[] features = {
             "CPU MONITOR",
-            "GPU MONITOR",
             "RAM MONITOR",
             "FPS MONITOR",
-            "TEMPERATURE MONITOR",
-            "NETWORK MONITOR",
-            "STORAGE MONITOR"
+            "TEMPERATURE",
+            "NETWORK",
+            "FOCUS COLOR",
+            "TOUCH INDICATOR",
+            "SOUND CONTROL",
+            "ANTI DISTURB",
+            "GAME SCREENSHOT"
         };
 
-        for (final String monitor : monitors) {
-            addButton(monitor, new Runnable() {
-                public void run() {
-                    showMonitor(monitor);
-                }
-            });
+        for (String feature : features) {
+            addPanelButton(items, feature);
         }
 
-        addButton("DEVICE HEALTH", new Runnable() {
-            public void run() {
-                showHealth();
+        scroll.addView(items);
+
+        panel.addView(scroll,
+            new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button close = new Button(this);
+
+        close.setText("CLOSE PANEL");
+        close.setTextColor(Color.WHITE);
+        close.setAllCaps(false);
+        close.setBackgroundColor(red);
+
+        panel.addView(close,
+            new LinearLayout.LayoutParams(-1, dp(45)));
+
+        close.setOnClickListener(v -> togglePanels());
+
+        return panel;
+    }
+
+    void createPanels() {
+        leftPanel = makePanel("DARK BOOSTER");
+        rightPanel = makePanel("GAME CONTROL");
+
+        int panelWidth = (int) (
+            getResources().getDisplayMetrics().widthPixels * 0.30f
+        );
+
+        WindowManager.LayoutParams leftParams =
+            params(panelWidth, -1,
+                Gravity.LEFT | Gravity.CENTER_VERTICAL);
+
+        WindowManager.LayoutParams rightParams =
+            params(panelWidth, -1,
+                Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+
+        leftPanel.setVisibility(View.GONE);
+        rightPanel.setVisibility(View.GONE);
+
+        wm.addView(leftPanel, leftParams);
+        wm.addView(rightPanel, rightParams);
+    }
+
+    void createFloatingButton() {
+        floatingButton = new TextView(this);
+
+        floatingButton.setText("DB");
+        floatingButton.setTextColor(Color.WHITE);
+        floatingButton.setTextSize(18);
+        floatingButton.setTypeface(null, Typeface.BOLD);
+        floatingButton.setGravity(Gravity.CENTER);
+        floatingButton.setBackgroundColor(red);
+
+        WindowManager.LayoutParams buttonParams =
+            params(dp(58), dp(58),
+                Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+
+        wm.addView(floatingButton, buttonParams);
+
+        floatingButton.setOnClickListener(v -> togglePanels());
+    }
+
+    void togglePanels() {
+        panelOpen = !panelOpen;
+
+        leftPanel.setVisibility(
+            panelOpen ? View.VISIBLE : View.GONE);
+
+        rightPanel.setVisibility(
+            panelOpen ? View.VISIBLE : View.GONE);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+
+        if (wm != null) {
+            if (floatingButton != null &&
+                    floatingButton.isAttachedToWindow()) {
+                wm.removeView(floatingButton);
             }
-        });
 
-        addButton("GAMING PANEL", new Runnable() {
-            public void run() {
-                showGamingPanel();
+            if (leftPanel != null &&
+                    leftPanel.isAttachedToWindow()) {
+                wm.removeView(leftPanel);
             }
-        });
-    }
 
-    void selectMode(String mode) {
-        selectedMode = mode;
-        Toast.makeText(this,
-            mode + " MODE SELECTED",
-            Toast.LENGTH_SHORT).show();
-        showDashboard();
-    }
-
-    void showMonitor(String name) {
-        setupPage(name);
-
-        GaugeView gauge = new GaugeView(this, name);
-        main.addView(gauge,
-            new LinearLayout.LayoutParams(-1, dp(230)));
-
-        TextView info = text(
-            "Live device data is not connected yet.",
-            15, Color.LTGRAY);
-        info.setGravity(Gravity.CENTER);
-        main.addView(info);
-
-        addButton("BACK TO DASHBOARD", new Runnable() {
-            public void run() {
-                showDashboard();
+            if (rightPanel != null &&
+                    rightPanel.isAttachedToWindow()) {
+                wm.removeView(rightPanel);
             }
-        });
-    }
-
-    void showHealth() {
-        new AlertDialog.Builder(this)
-            .setTitle("DEVICE HEALTH")
-            .setMessage(
-                "Battery: Data not connected\n\n" +
-                "Temperature: Data not connected\n\n" +
-                "RAM: Data not connected\n\n" +
-                "Storage: Data not connected\n\n" +
-                "Network: Data not connected")
-            .setPositiveButton("OK", null)
-            .show();
-    }
-
-    void showGamingPanel() {
-        new AlertDialog.Builder(this)
-            .setTitle("DARK BOOSTER GAMING PANEL")
-            .setMessage(
-                "STANDARD / BASIC / ULTRA\n\n" +
-                "Performance Monitor\n" +
-                "Device Health\n" +
-                "Battery Saver\n" +
-                "Touch Indicator\n" +
-                "Focus Color\n" +
-                "Network Monitor\n" +
-                "Edge Lighting\n\n" +
-                "Panel preview only. " +
-                "Floating overlay implementation is pending.")
-            .setPositiveButton("CLOSE", null)
-            .show();
-    }
-
-    class GaugeView extends View {
-
-        Paint paint = new Paint(3);
-        String label;
-
-        GaugeView(Activity context, String name) {
-            super(context);
-            label = name;
         }
+    }
 
-        @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-
-            float cx = getWidth() / 2f;
-            float cy = getHeight() / 2f;
-            float radius = dp(75);
-
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(dp(12));
-            paint.setColor(cardColor);
-
-            RectF oval = new RectF(
-                cx-radius, cy-radius,
-                cx+radius, cy+radius);
-
-            canvas.drawArc(oval, 135, 270,
-                false, paint);
-
-            paint.setColor(red);
-            canvas.drawArc(oval, 135, 0,
-                false, paint);
-
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.WHITE);
-            paint.setTextSize(dp(23));
-            paint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText("--", cx, cy, paint);
-
-            paint.setTextSize(dp(13));
-            paint.setColor(Color.LTGRAY);
-            canvas.drawText(label, cx, cy+dp(27), paint);
-        }
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
     }
 }
